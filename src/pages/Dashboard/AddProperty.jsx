@@ -6,6 +6,7 @@ import { zodResolver } from '@hookform/resolvers/zod';
 import { useMutation } from '@tanstack/react-query';
 import { propertiesApi } from '../../api/propertiesApi';
 import { toast } from 'react-toastify';
+import { LocationPicker } from '../../components/map';
 
 const schema = z.object({
   title: z.string().min(5, 'Title must be at least 5 characters'),
@@ -36,6 +37,7 @@ export default function AddProperty() {
   const [imagePreviews, setImagePreviews] = useState([]);
   const [features, setFeatures] = useState([]);
   const [featureInput, setFeatureInput] = useState('');
+  const [coordinates, setCoordinates] = useState(null); // { lat, lng }
 
   const { register, handleSubmit, trigger, formState: { errors }, watch } = useForm({
     resolver: zodResolver(schema),
@@ -79,6 +81,11 @@ export default function AddProperty() {
     ];
     const valid = await trigger(fieldGroups[step]);
     if (valid) {
+      // Step 2: also require a pin on the map
+      if (step === 2 && !coordinates) {
+        toast.error('Please pin your property location on the map');
+        return;
+      }
       setStep((s) => s + 1);
     } else {
       toast.error('Please fix the errors above before continuing');
@@ -86,6 +93,11 @@ export default function AddProperty() {
   };
 
   const onSubmit = (data) => {
+    if (!coordinates) {
+      toast.error('Please pin your property location on the map');
+      setStep(2);
+      return;
+    }
     const fd = new FormData();
     // Flatten and prepare payload
     const payload = {
@@ -102,6 +114,10 @@ export default function AddProperty() {
       'location[city]': data.location?.city,
       'location[address]': data.location?.address,
       'location[district]': data.location?.district,
+      'location[coordinates]': JSON.stringify({
+        type: 'Point',
+        coordinates: [coordinates.lng, coordinates.lat], // GeoJSON: [lng, lat]
+      }),
     };
     Object.entries(payload).forEach(([k, v]) => { if (v !== undefined && v !== '') fd.append(k, v); });
     images.forEach((img) => fd.append('images', img));
@@ -294,6 +310,25 @@ export default function AddProperty() {
                     className={inputClass(errors.location?.address)} />
                   {errors.location?.address && <p className="text-[#ba1a1a] text-xs mt-1">{errors.location.address.message}</p>}
                 </div>
+                <div>
+                  <label className="block text-xs font-bold uppercase tracking-wider text-[#41493e] mb-1.5">
+                    Pin Location on Map *
+                  </label>
+                  <LocationPicker
+                    value={coordinates}
+                    onChange={setCoordinates}
+                    error={!coordinates ? undefined : undefined}
+                  />
+                  {!coordinates && (
+                    <p className="text-[#717a6d] text-xs mt-1">Click on the map or drag the marker to set the exact property location.</p>
+                  )}
+                  {coordinates && (
+                    <p className="text-[#1b5e20] text-xs mt-1 flex items-center gap-1">
+                      <span className="material-symbols-outlined text-[14px]">check_circle</span>
+                      Location pinned at {coordinates.lat.toFixed(5)}, {coordinates.lng.toFixed(5)}
+                    </p>
+                  )}
+                </div>
               </>
             )}
 
@@ -330,6 +365,18 @@ export default function AddProperty() {
                   <div className="flex justify-between py-2 border-b border-[#c0c9bb]/40">
                     <span className="font-medium text-[#1b1c1c]">City</span>
                     <span>{watch('location.city') || '—'}</span>
+                  </div>
+                  <div className="flex justify-between py-2 border-b border-[#c0c9bb]/40">
+                    <span className="font-medium text-[#1b1c1c]">Address</span>
+                    <span className="text-right max-w-[60%]">{watch('location.address') || '—'}</span>
+                  </div>
+                  <div className="flex justify-between py-2 border-b border-[#c0c9bb]/40">
+                    <span className="font-medium text-[#1b1c1c]">Coordinates</span>
+                    <span className="flex items-center gap-1 text-[#1b5e20]">
+                      {coordinates
+                        ? <><span className="material-symbols-outlined text-[14px]">location_on</span>{coordinates.lat.toFixed(4)}, {coordinates.lng.toFixed(4)}</>
+                        : '—'}
+                    </span>
                   </div>
                   <div className="flex justify-between py-2">
                     <span className="font-medium text-[#1b1c1c]">Photos</span>
